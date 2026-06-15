@@ -43,11 +43,15 @@ This switch will be added only if cooling is available in your system.
 
 ### Climate entity
 
-Climate entity has read-only preset. Two presets are available:
-* ECO - activated when scheduled ECO profile is on OR Temporary ECO mode activated on the mobile app.
-* Away - activated when `switch.uponor_away` is on.
+Climate entities support the following presets:
+* Comfort - normal thermostat setpoint.
+* Away - enables forced ECO/Away mode for the system.
+* ECO - shown when a scheduled ECO profile or temporary ECO mode is active. Selecting ECO from Home Assistant enables forced ECO/Away mode.
 
-If none of those are true, then preset is empty.
+When Comfort is active, changing the climate target temperature changes the thermostat comfort setpoint.
+
+When ECO/Away setback is active, changing the climate target temperature changes the thermostat ECO setback instead.
+The comfort setpoint is preserved and will be restored when returning to Comfort.
 
 ## Limitations
 

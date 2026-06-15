@@ -144,10 +144,10 @@ class UponorClimate(ClimateEntity):
 
     @property
     def preset_mode(self):
-        if self._state_proxy.is_eco(self._thermostat):
-            return PRESET_ECO
         if self._state_proxy.is_away():
             return PRESET_AWAY
+        if self._state_proxy.is_eco(self._thermostat):
+            return PRESET_ECO
         else:
             return PRESET_COMFORT
     
@@ -185,15 +185,9 @@ class UponorClimate(ClimateEntity):
 
     # Support setting preset_mode
     async def async_set_preset_mode(self, preset_mode):
-        if preset_mode != PRESET_ECO:
-            await self._state_proxy.async_set_preset_mode(preset_mode)
-        else:
-            if self._state_proxy.is_away():
-                await self._state_proxy.async_set_preset_mode(PRESET_COMFORT)
-            else:
-                await self._state_proxy.async_set_preset_mode(PRESET_AWAY)
+        await self._state_proxy.async_set_preset_mode(preset_mode)
 
     async def async_set_temperature(self, **kwargs):
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is not None and self._is_on:
-            await self._state_proxy.async_set_setpoint(self._thermostat, temp)
+            await self._state_proxy.async_set_target_temperature(self._thermostat, temp)

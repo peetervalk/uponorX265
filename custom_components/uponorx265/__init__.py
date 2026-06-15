@@ -40,7 +40,8 @@ from .helper import get_unique_id_from_config_entry
 
 from homeassistant.components.climate.const import (
     PRESET_AWAY,
-    PRESET_COMFORT
+    PRESET_COMFORT,
+    PRESET_ECO
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -375,13 +376,15 @@ class UponorStateProxy:
         if var_cool_setback in self._data and self.is_cool_enabled():
             cool_setback = int(self._data[var_cool_setback]) * -1
 
-        eco_setback = 0
-        var_eco_setback = thermostat + '_eco_offset'
-        mode = -1 if self.is_cool_enabled() else 1
-        if var_eco_setback in self._data and (self.is_eco(thermostat) or self.is_away()):
-            eco_setback = int(self._data[var_eco_setback]) * mode
+        return cool_setback + self._get_active_eco_setback(thermostat)
 
-        return cool_setback + eco_setback
+    def _get_active_eco_setback(self, thermostat):
+        var = thermostat + '_eco_offset'
+        if var not in self._data or not self.is_setback_active(thermostat):
+            return 0
+
+        mode = -1 if self.is_cool_enabled() else 1
+        return int(self._data[var]) * mode
 
     # State
 
@@ -458,7 +461,7 @@ class UponorStateProxy:
         await self.async_set_setpoint(thermostat, off_temp)
 
     async def async_set_preset_mode(self, preset_mode):
-        if preset_mode == PRESET_AWAY:
+        if preset_mode in (PRESET_AWAY, PRESET_ECO):
             await self.async_set_away(True)
         elif preset_mode == PRESET_COMFORT:
             await self.async_set_away(False)
@@ -498,6 +501,9 @@ class UponorStateProxy:
         var_temp = 'cust_Temporary_ECO_Activation'
         return (var in self._data and self._data[var] == "1") or (
                     var_temp in self._data and self._data[var_temp] == "1")
+
+    def is_setback_active(self, thermostat):
+        return self.is_away() or self.is_eco(thermostat)
 
     def get_eco_setback(self, thermostat):
         var = thermostat + '_eco_offset'
@@ -554,6 +560,37 @@ class UponorStateProxy:
         _LOGGER.debug("Called set variable: name: %s, value: %s, data: %s", var_name, var_value, self._data)
         await self._client.send_data({var_name: var_value})
         self._data[var_name] = var_value
+        self._hass.async_create_task(self.call_state_update())
+
+    async def async_set_target_temperature(self, thermostat, temp):
+        if self.is_setback_active(thermostat):
+            await self.async_set_setback_target(thermostat, temp)
+            return
+
+        await self.async_set_setpoint(thermostat, temp)
+
+    async def async_set_setback_target(self, thermostat, temp):
+        current_target = self.get_setpoint(thermostat)
+        if current_target is None:
+            await self.async_set_setpoint(thermostat, temp)
+            return
+
+        active_eco_setback = self._get_active_eco_setback(thermostat)
+        comfort_target = current_target + active_eco_setback / 18
+        mode = -1 if self.is_cool_enabled() else 1
+        offset = round((comfort_target - temp) * 18 / mode)
+
+        if offset < 0:
+            _LOGGER.warning(
+                "Requested setback target %.1f for %s would require a negative eco offset; using 0 instead",
+                temp,
+                thermostat,
+            )
+            offset = 0
+
+        var = thermostat + '_eco_offset'
+        await self._client.send_data({var: offset})
+        self._data[var] = offset
         self._hass.async_create_task(self.call_state_update())
 
     async def async_set_setpoint(self, thermostat, temp):
